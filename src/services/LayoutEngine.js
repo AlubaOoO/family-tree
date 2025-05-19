@@ -6,10 +6,12 @@ const VERTICAL_SPACING = 360;   // Space between generations
 const SPOUSE_SPACING = 220;     // Space between spouses
 const GENERATION_LABEL_WIDTH = 60; // Width of generation label
 
+import { getSpouses, getChildren, findPersonById } from './FamilyData';
+
 class LayoutEngine {
-  constructor(familyData, spouseRelationships) {
-    this.familyData = familyData;
-    this.spouseRelationships = spouseRelationships;
+  constructor(familyData) {
+    // 扁平化家族树，将所有人（包括配偶和子女）都放在一个数组中
+    this.familyData = this.flattenFamilyTree(familyData);
     this.generationLabels = []; // 存储世代标记的位置信息
     
     // 确保每个 person 对象都有 _hidden 属性
@@ -18,6 +20,26 @@ class LayoutEngine {
         person._hidden = false;
       }
     });
+  }
+  
+  // 扁平化家族树的辅助方法
+  flattenFamilyTree(data) {
+    const flattened = [];
+    
+    const flatten = (people) => {
+      if (!people || !people.length) return;
+      
+      for (const person of people) {
+        flattened.push(person);
+        
+        if (person.children && person.children.length > 0) {
+          flatten(person.children);
+        }
+      }
+    };
+    
+    flatten(data);
+    return flattened;
   }
   
   // Calculate positions for all family members
@@ -241,35 +263,32 @@ class LayoutEngine {
     return this.familyData.filter(person => person.generation === gen);
   }
   
-  // Get all children of a specific person
+  // Get children for a given parent ID
   getChildren(parentId) {
-    return this.familyData.filter(person => person.parent === parentId);
+    const parent = findPersonById(parentId, this.familyData);
+    if (!parent) return [];
+    
+    return getChildren(parent);
   }
   
   // Check if a person has children
   hasChildren(personId) {
-    return this.familyData.some(person => person.parent === personId);
+    const person = findPersonById(personId, this.familyData);
+    return person && getChildren(person).length > 0;
   }
   
   // Check if a person is a main person (not a spouse)
   isMainPerson(person) {
-    // A main person usually has a parent or has children
-    return person.parent !== undefined || this.hasChildren(person.id);
+    // 在新结构中，主要人物是type为'child'或未定义type的人物
+    return !person.type || person.type === 'child';
   }
   
   // Get spouse IDs for a given person
   getSpouseIds(personId) {
-    const spouses = [];
+    const person = findPersonById(personId, this.familyData);
+    if (!person) return [];
     
-    this.spouseRelationships.forEach(([husband, wife]) => {
-      if (husband === personId) {
-        spouses.push(wife);
-      } else if (wife === personId) {
-        spouses.push(husband);
-      }
-    });
-    
-    return spouses;
+    return getSpouses(person).map(spouse => spouse.id);
   }
   
   // Update visibility of nodes based on collapse state
@@ -289,19 +308,16 @@ class LayoutEngine {
   
   // Recursively hide descendants of a collapsed node
   hideDescendants(parentId) {
-    const children = this.familyData.filter(person => person.parent === parentId);
+    const children = this.getChildren(parentId);
     
     children.forEach(child => {
       // Hide the child
       child._hidden = true;
       
       // Hide the child's spouse(s) if any
-      const spouseIds = this.getSpouseIds(child.id);
-      spouseIds.forEach(spouseId => {
-        const spouse = this.familyData.find(p => p.id === spouseId);
-        if (spouse) {
-          spouse._hidden = true;
-        }
+      const spouses = getSpouses(child);
+      spouses.forEach(spouse => {
+        spouse._hidden = true;
       });
       
       // Recursively hide descendants

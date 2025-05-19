@@ -235,8 +235,9 @@ const endDrag = (event) => {
 
 .toggle-btn {
   position: absolute;
-  right: -10px;
-  bottom: -10px;
+  left: 50%;
+  bottom: -13px;
+  transform: translateX(-50%);
   width: 26px;
   height: 26px;
   border-radius: 50%;
@@ -256,7 +257,8 @@ const endDrag = (event) => {
 
 .toggle-btn:hover {
   background-color: #f0f0f0;
-  transform: scale(1.15);
+  /* transform: scale(1.15); */
+  transform: translateX(-50%) scale(1.15);
 }
 
 .toggle-icon {
@@ -278,7 +280,7 @@ const endDrag = (event) => {
 
 .collapsed .toggle-btn {
   background-color: #f8f9fa;
-  transform: rotate(90deg);
+  transform: translateX(-50%) rotate(90deg);
 }
 
 .collapsed.male .toggle-btn {
@@ -290,6 +292,6 @@ const endDrag = (event) => {
 }
 
 .collapsed .toggle-btn:hover {
-  transform: rotate(90deg) scale(1.15);
+  transform: translateX(-50%) rotate(90deg) scale(1.15);
 }
 </style> 

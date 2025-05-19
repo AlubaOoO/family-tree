@@ -80,14 +80,30 @@ import PersonDetails from './PersonDetails.vue';
 import GenerationLabel from './GenerationLabel.vue';
 import LayoutEngine from '../services/LayoutEngine';
 import ConnectionManager from '../services/ConnectionManager';
-import { familyData as rawFamilyData, spouseRelationships } from '../services/FamilyData';
+import { familyData as rawFamilyData, getChildren, findPersonById } from '../services/FamilyData';
 import { wait } from '../utils/domUtils';
 
 // 将导入的数据转换为响应式数据
 const familyData = reactive(rawFamilyData.map(person => ({
   ...person,
   position: { ...person.position },
-  _hidden: false
+  _hidden: false,
+  children: person.children ? person.children.map(child => ({
+    ...child,
+    position: { ...child.position },
+    _hidden: false,
+    children: child.children ? child.children.map(grandchild => ({
+      ...grandchild,
+      position: { ...grandchild.position },
+      _hidden: false,
+      children: grandchild.children ? grandchild.children.map(ggchild => ({
+        ...ggchild,
+        position: { ...ggchild.position },
+        _hidden: false,
+        children: ggchild.children ? [...ggchild.children] : []
+      })) : []
+    })) : []
+  })) : []
 })));
 
 // Reference to the canvas
@@ -144,7 +160,8 @@ const toggleFullScreen = () => {
 
 // Check if a person has children
 const hasChildren = (personId) => {
-  return familyData.some(person => person.parent === personId);
+  const person = findPersonById(personId, familyData);
+  return person && getChildren(person).length > 0;
 };
 
 // Function to toggle collapse state of a subtree
@@ -344,7 +361,7 @@ const initializeTreeLayout = async () => {
     // 确保以下操作顺序执行并在每一步等待DOM更新
     
     // 1. 初始化布局引擎
-    layoutEngine = new LayoutEngine(familyData, spouseRelationships);
+    layoutEngine = new LayoutEngine(familyData);
     
     // 2. 计算初始位置
     const dimensions = layoutEngine.calculatePositions();
@@ -375,7 +392,7 @@ const initializeTreeLayout = async () => {
     isConnectingNodes.value = true;
     
     // 11. 初始化连接管理器
-    connectionManager = new ConnectionManager(treeCanvas.value, familyData, spouseRelationships, layoutEngine);
+    connectionManager = new ConnectionManager(treeCanvas.value, familyData, layoutEngine);
     connectionManager.initialize();
     
     // 12. 等待DOM更新
@@ -403,7 +420,30 @@ const initializeTreeLayout = async () => {
 
 // 显示节点的计算属性 (仅在初始化后显示)
 const displayFamilyData = computed(() => {
-  return isInitialized.value ? familyData : [];
+  if (!isInitialized.value) return [];
+  
+  // 扁平化家族树，将所有人（包括配偶和子女）都放在一个数组中
+  const flattenedData = [];
+  
+  // 递归函数，用于将家族树扁平化
+  const flattenFamilyTree = (people) => {
+    if (!people || !people.length) return;
+    
+    for (const person of people) {
+      // 添加当前人物到扁平化数组
+      flattenedData.push(person);
+      
+      // 如果有子女，递归添加
+      if (person.children && person.children.length > 0) {
+        flattenFamilyTree(person.children);
+      }
+    }
+  };
+  
+  // 从根节点开始扁平化
+  flattenFamilyTree(familyData);
+  
+  return flattenedData;
 });
 
 // Handle screen resize events to maintain proper fit
