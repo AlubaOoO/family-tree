@@ -574,6 +574,15 @@ const loadChildrenData = async (personId) => {
         type: 'child',
         position: { x: 0, y: 0 },
         children: []
+      },
+      {
+        id: `${personId}-child-3`,
+        name: `${person.name}的子女3`,
+        title: '三子',
+        generation: person.generation + 1,
+        type: 'child',
+        position: { x: 0, y: 0 },
+        children: []
       }
     ];
     

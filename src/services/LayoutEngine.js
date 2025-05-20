@@ -49,24 +49,49 @@ class LayoutEngine {
   calculatePositions() {
     console.log('[LayoutEngine] Starting calculatePositions');
     
-    // 检查数据更新情况
-    console.log('[LayoutEngine] Family data count:', this.familyData.length);
-    
     // 重置所有位置为初始值，确保重新计算是从干净的状态开始
     this.familyData.forEach(person => {
       person.position.x = 0;
       person.position.y = 0;
     });
     
-    // Get minimum generation to start from
+    // Get minimum and maximum generation to determine our range
     const minGen = Math.min(...this.familyData.map(p => p.generation));
     const maxGen = this.getMaxGeneration();
     console.log(`[LayoutEngine] Generation range: ${minGen} to ${maxGen}`);
     
-    // First, calculate the space needed for each person based on their descendants
-    const spaceNeeded = {};
+    // Step 1: Calculate the space needed for each person (from bottom up)
+    const personWidths = this.calculatePersonWidths(minGen, maxGen);
     
-    // Process from bottom up (from youngest generation to oldest)
+    // Reset generation labels array
+    this.generationLabels = [];
+    
+    // Step 2: Position all people from top to bottom
+    this.positionAllPeople(minGen, maxGen, personWidths);
+    
+    // Step 3: Ensure the first child is directly below the parent
+    this.alignFirstChildrenWithParents(minGen, maxGen);
+    
+    // Ensure all coordinates are integers
+    this.roundAllCoordinates();
+    
+    // Return layout dimensions
+    const maxX = Math.max(...this.familyData.map(p => p.position.x)) + CARD_WIDTH + 100;
+    const maxY = Math.max(...this.familyData.map(p => p.position.y)) + CARD_HEIGHT + 100;
+    
+    console.log(`[LayoutEngine] Layout dimensions: ${maxX}x${maxY}`);
+    
+    return {
+      maxX: maxX,
+      maxY: maxY
+    };
+  }
+  
+  // Step 1: Calculate the width needed for each person based on their descendants
+  calculatePersonWidths(minGen, maxGen) {
+    const personWidths = {};
+    
+    // Process from bottom up (from youngest to oldest generation)
     for (let gen = maxGen; gen >= minGen; gen--) {
       const genPeople = this.getPeopleByGeneration(gen).filter(p => this.isMainPerson(p));
       console.log(`[LayoutEngine] Processing generation ${gen}, found ${genPeople.length} main people`);
@@ -81,8 +106,9 @@ class LayoutEngine {
         if (children.length > 0) {
           console.log(`[LayoutEngine] Person ${person.id} (${person.name}) has ${children.length} children`);
           
+          // Sum the width of all children plus spacing between them
           const childrenSpace = children.reduce((sum, child) => {
-            return sum + (spaceNeeded[child.id] || CARD_WIDTH);
+            return sum + (personWidths[child.id] || CARD_WIDTH);
           }, 0);
           
           // Add spacing between children
@@ -93,15 +119,16 @@ class LayoutEngine {
         }
         
         // Store the space needed for this person
-        spaceNeeded[person.id] = width;
+        personWidths[person.id] = width;
         console.log(`[LayoutEngine] Space needed for person ${person.id} (${person.name}): ${width}px`);
       });
     }
     
-    // 重置世代标记数组
-    this.generationLabels = [];
-    
-    // Now position all people from top to bottom
+    return personWidths;
+  }
+  
+  // Step 2: Position all people from top to bottom
+  positionAllPeople(minGen, maxGen, personWidths) {
     for (let gen = minGen; gen <= maxGen; gen++) {
       const genPeople = this.getPeopleByGeneration(gen).filter(p => this.isMainPerson(p));
       
@@ -118,138 +145,183 @@ class LayoutEngine {
         // Calculate Y position based on generation
         person.position.y = (gen - minGen) * VERTICAL_SPACING + 50;
         
-        // Set X position left-aligned
+        // Set X position
         person.position.x = currentX;
         
         console.log(`[LayoutEngine] Positioned person ${person.id} (${person.name}) at (${person.position.x}, ${person.position.y})`);
         
-        // Position spouse(s) to the right of the person
-        const spouseIds = this.getSpouseIds(person.id);
-        let lastSpousePosition = person.position.x;
+        // Position spouses next to the main person
+        this.positionSpouses(person);
         
-        // Position each spouse beside the main person
-        spouseIds.forEach((spouseId, spouseIndex) => {
-          const spouse = this.familyData.find(p => p.id === spouseId);
-          if (spouse) {
-            spouse.position.y = person.position.y; // Same Y level
-            spouse.position.x = lastSpousePosition + SPOUSE_SPACING; // To the right
-            lastSpousePosition = spouse.position.x;
-            
-            console.log(`[LayoutEngine] Positioned spouse ${spouse.id} (${spouse.name}) at (${spouse.position.x}, ${spouse.position.y})`);
-          }
-        });
-        
-        // Move to the next position, using space needed + extra spacing
-        // Use the calculated space needed, or default to CARD_WIDTH + spouses if no descendants
-        const personSpace = spaceNeeded[person.id] || (CARD_WIDTH + (spouseIds.length * SPOUSE_SPACING));
+        // Move to the next position, using the calculated space needed
+        const personSpace = personWidths[person.id] || 
+          (CARD_WIDTH + (this.getSpouseIds(person.id).length * SPOUSE_SPACING));
         currentX += personSpace + HORIZONTAL_SPACING;
       });
       
-      // Now center children under their parents
-      genPeople.forEach(person => {
-        const children = this.getChildren(person.id);
-        if (children.length > 0) {
-          console.log(`[LayoutEngine] Centering ${children.length} children under person ${person.id} (${person.name})`);
-          
-          // Find rightmost position of parent (including spouses)
-          const spouseIds = this.getSpouseIds(person.id);
-          let parentRightX = person.position.x + CARD_WIDTH;
-          
-          spouseIds.forEach(spouseId => {
-            const spouse = this.familyData.find(p => p.id === spouseId);
-            if (spouse) {
-              const spouseRightX = spouse.position.x + CARD_WIDTH;
-              if (spouseRightX > parentRightX) {
-                parentRightX = spouseRightX;
-              }
-            }
-          });
-          
-          // Calculate children's total width
-          const leftmostChild = children.reduce((min, child) => 
-            child.position.x < min.position.x ? child : min, children[0]);
-          const rightmostChild = children.reduce((max, child) => {
-            // Include spouse width for rightmost position
-            const childSpouses = this.getSpouseIds(max.id);
-            const spouseOffset = childSpouses.length * SPOUSE_SPACING;
-            const maxRightX = max.position.x + CARD_WIDTH + spouseOffset;
-            
-            const childSpouses2 = this.getSpouseIds(child.id);
-            const spouseOffset2 = childSpouses2.length * SPOUSE_SPACING;
-            const childRightX = child.position.x + CARD_WIDTH + spouseOffset2;
-            
-            return childRightX > maxRightX ? child : max;
-          }, children[0]);
-          
-          // Get right edge of rightmost child (including spouses)
-          const rightmostSpouses = this.getSpouseIds(rightmostChild.id);
-          let rightEdge = rightmostChild.position.x + CARD_WIDTH;
-          
-          if (rightmostSpouses.length > 0) {
-            const lastSpouse = this.familyData.find(p => p.id === rightmostSpouses[rightmostSpouses.length - 1]);
-            if (lastSpouse) {
-              rightEdge = lastSpouse.position.x + CARD_WIDTH;
-            }
+      // Center children under their parents
+      this.centerChildrenUnderParents(genPeople);
+      
+      // Calculate generation label for this generation
+      this.calculateGenerationLabel(gen, minGen);
+    }
+  }
+  
+  // Position spouses next to the main person
+  positionSpouses(person) {
+    const spouseIds = this.getSpouseIds(person.id);
+    let lastSpousePosition = person.position.x;
+    
+    // Position each spouse beside the main person
+    spouseIds.forEach((spouseId, spouseIndex) => {
+      const spouse = this.familyData.find(p => p.id === spouseId);
+      if (spouse) {
+        spouse.position.y = person.position.y; // Same Y level
+        spouse.position.x = lastSpousePosition + SPOUSE_SPACING; // To the right
+        lastSpousePosition = spouse.position.x;
+        
+        console.log(`[LayoutEngine] Positioned spouse ${spouse.id} (${spouse.name}) at (${spouse.position.x}, ${spouse.position.y})`);
+      }
+    });
+  }
+  
+  // Center children under their parents
+  centerChildrenUnderParents(genPeople) {
+    genPeople.forEach(person => {
+      const children = this.getChildren(person.id);
+      if (children.length === 0) return;
+      
+      console.log(`[LayoutEngine] Centering ${children.length} children under person ${person.id} (${person.name})`);
+      
+      // Find rightmost position of parent (including spouses)
+      const spouseIds = this.getSpouseIds(person.id);
+      let parentRightX = person.position.x + CARD_WIDTH;
+      
+      spouseIds.forEach(spouseId => {
+        const spouse = this.familyData.find(p => p.id === spouseId);
+        if (spouse) {
+          const spouseRightX = spouse.position.x + CARD_WIDTH;
+          if (spouseRightX > parentRightX) {
+            parentRightX = spouseRightX;
           }
+        }
+      });
+      
+      // Calculate children's total width
+      const leftmostChild = children.reduce((min, child) => 
+        child.position.x < min.position.x ? child : min, children[0]);
+      
+      const rightmostChild = children.reduce((max, child) => {
+        // Include spouse width for rightmost position
+        const childSpouses = this.getSpouseIds(child.id);
+        const spouseOffset = childSpouses.length * SPOUSE_SPACING;
+        const maxRightX = max.position.x + CARD_WIDTH + spouseOffset;
+        
+        const childSpouses2 = this.getSpouseIds(child.id);
+        const spouseOffset2 = childSpouses2.length * SPOUSE_SPACING;
+        const childRightX = child.position.x + CARD_WIDTH + spouseOffset2;
+        
+        return childRightX > maxRightX ? child : max;
+      }, children[0]);
+      
+      // Get right edge of rightmost child (including spouses)
+      const rightmostSpouses = this.getSpouseIds(rightmostChild.id);
+      let rightEdge = rightmostChild.position.x + CARD_WIDTH;
+      
+      if (rightmostSpouses.length > 0) {
+        const lastSpouse = this.familyData.find(p => p.id === rightmostSpouses[rightmostSpouses.length - 1]);
+        if (lastSpouse) {
+          rightEdge = lastSpouse.position.x + CARD_WIDTH;
+        }
+      }
+      
+      // Calculate parent center vs children center
+      const parentCenter = (person.position.x + parentRightX) / 2;
+      const childrenCenter = (leftmostChild.position.x + rightEdge) / 2;
+      
+      // Calculate offset to center children under parent
+      const offset = parentCenter - childrenCenter;
+      
+      console.log(`[LayoutEngine] Centering calculation:`, {
+        parentLeftX: person.position.x,
+        parentRightX: parentRightX,
+        parentCenter: parentCenter,
+        leftmostChildX: leftmostChild.position.x,
+        rightEdge: rightEdge,
+        childrenCenter: childrenCenter,
+        offset: offset
+      });
+      
+      // Apply offset to all children and their spouses
+      children.forEach(child => {
+        const oldX = child.position.x;
+        child.position.x += offset;
+        
+        console.log(`[LayoutEngine] Moved child ${child.id} (${child.name}) from X=${oldX} to X=${child.position.x}`);
+        
+        // Move child's spouses as well
+        const childSpouseIds = this.getSpouseIds(child.id);
+        childSpouseIds.forEach(spouseId => {
+          const spouse = this.familyData.find(p => p.id === spouseId);
+          if (spouse) {
+            const oldSpouseX = spouse.position.x;
+            spouse.position.x += offset;
+            console.log(`[LayoutEngine] Moved spouse ${spouse.id} (${spouse.name}) from X=${oldSpouseX} to X=${spouse.position.x}`);
+          }
+        });
+      });
+    });
+  }
+  
+  // Step 3: Ensure the first child is directly below the parent by adjusting siblings
+  alignFirstChildrenWithParents(minGen, maxGen) {
+    // Traverse from top to bottom
+    for (let gen = minGen; gen < maxGen; gen++) {
+      const genPeople = this.getPeopleByGeneration(gen).filter(p => this.isMainPerson(p));
+      
+      genPeople.forEach(parent => {
+        const children = this.getChildren(parent.id);
+        if (children.length === 0) return;
+        
+        // Get first child
+        const firstChild = children[0];
+        
+        // Calculate the parent's center position
+        const parentCenter = parent.position.x + (CARD_WIDTH / 2);
+        
+        // Calculate the first child's center position
+        const firstChildCenter = firstChild.position.x + (CARD_WIDTH / 2);
+        
+        // Calculate the offset needed to align the first child with parent
+        const offset = parentCenter - firstChildCenter;
+        
+        if (Math.abs(offset) > 1) { // Only adjust if the offset is significant
+          console.log(`[LayoutEngine] Aligning children of ${parent.id} (${parent.name}): offset=${offset}`);
           
-          // Calculate parent center vs children center
-          const parentCenter = (person.position.x + parentRightX) / 2;
-          const childrenCenter = (leftmostChild.position.x + rightEdge) / 2;
-          
-          // Calculate offset to center children under parent
-          const offset = parentCenter - childrenCenter;
-          
-          console.log(`[LayoutEngine] Centering calculation:`, {
-            parentLeftX: person.position.x,
-            parentRightX: parentRightX,
-            parentCenter: parentCenter,
-            leftmostChildX: leftmostChild.position.x,
-            rightEdge: rightEdge,
-            childrenCenter: childrenCenter,
-            offset: offset
-          });
-          
-          // Apply offset to all children and their spouses
+          // Apply offset to all children of this parent and their spouses
           children.forEach(child => {
-            const oldX = child.position.x;
             child.position.x += offset;
-            
-            console.log(`[LayoutEngine] Moved child ${child.id} (${child.name}) from X=${oldX} to X=${child.position.x}`);
             
             // Move child's spouses as well
             const childSpouseIds = this.getSpouseIds(child.id);
             childSpouseIds.forEach(spouseId => {
               const spouse = this.familyData.find(p => p.id === spouseId);
               if (spouse) {
-                const oldSpouseX = spouse.position.x;
                 spouse.position.x += offset;
-                console.log(`[LayoutEngine] Moved spouse ${spouse.id} (${spouse.name}) from X=${oldSpouseX} to X=${spouse.position.x}`);
               }
             });
           });
         }
       });
-      
-      // 计算这一代的标记位置和高度
-      this.calculateGenerationLabel(gen, minGen);
     }
-    
-    // 确保所有坐标都是整数，避免可能的渲染问题
+  }
+  
+  // Ensure all coordinates are integers
+  roundAllCoordinates() {
     this.familyData.forEach(person => {
       person.position.x = Math.round(person.position.x);
       person.position.y = Math.round(person.position.y);
     });
-    
-    // 返回布局尺寸
-    const maxX = Math.max(...this.familyData.map(p => p.position.x)) + CARD_WIDTH + 100;
-    const maxY = Math.max(...this.familyData.map(p => p.position.y)) + CARD_HEIGHT + 100;
-    
-    console.log(`[LayoutEngine] Layout dimensions: ${maxX}x${maxY}`);
-    
-    return {
-      maxX: maxX,
-      maxY: maxY
-    };
   }
   
   // 计算世代标记的位置和高度

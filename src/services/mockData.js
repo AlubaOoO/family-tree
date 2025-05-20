@@ -127,7 +127,8 @@ export const mockData = [
                     relation: '【西马】',
                     generation: 17,
                     type: 'child',
-                    children: []
+                    children: [],
+                    hasChildrenToLoad: true,
                   }
                 ]
               },
@@ -155,8 +156,27 @@ export const mockData = [
                     relation: '',
                     generation: 17,
                     type: 'child',
-                    children: [],
-                    hasChildrenToLoad: true,
+                    children: [
+                      {
+                        id: 24,
+                        name: '艳春-1',
+                        title: '长女',
+                        relation: '',
+                        generation: 18,
+                        type: 'child',
+                        children: [],
+                      },
+                      {
+                        id: 25,
+                        name: '艳春-2',
+                        title: '次女',
+                        relation: '',
+                        generation: 18,
+                        type: 'child',
+                        children: [],
+                      }
+                    ],
+                    // hasChildrenToLoad: true,
                   }
                 ]
               }
