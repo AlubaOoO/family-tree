@@ -127,7 +127,36 @@ export const mockData = [
                     relation: '【西马】',
                     generation: 17,
                     type: 'child',
-                    children: [],
+                    // children: [
+                    //   {
+                    //     id: 221,
+                    //     name: '仇环宇的子女1',
+                    //     title: '长子',
+                    //     relation: '【西马】',
+                    //     generation: 17,
+                    //     type: 'child',
+                    //     children: [
+                    //       {
+                    //         id: 2211,
+                    //         name: '仇环宇的子女的子女1',
+                    //         title: '长子',
+                    //         relation: '【西马】',
+                    //         generation: 18,
+                    //         type: 'child',
+                    //         children: [],
+                    //       },
+                    //       {
+                    //         id: 2212,
+                    //         name: '仇环宇的子女的子女2',
+                    //         title: '次子',
+                    //         relation: '【西马】',
+                    //         generation: 18,
+                    //         type: 'child',
+                    //         children: [],
+                    //       }
+                    //     ]
+                    //   },
+                    // ],
                     hasChildrenToLoad: true,
                   }
                 ]
