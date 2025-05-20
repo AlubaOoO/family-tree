@@ -49,3 +49,79 @@ export const getChildren = (person) => {
   if (!person || !person.children) return [];
   return person.children.filter(child => child.type === 'child');
 }; 
+
+// Mock data for demonstration - in a real app, this would come from an API
+export const fetchMockChildrenData = (person) => {
+  const personId = person.id
+  return [
+    {
+      id: personId * 10 + 1,
+      name: `${person.name}的子女1`,
+      title: "长子",
+      generation: person.generation + 1,
+      type: "child",
+      position: { x: 0, y: 0 },
+      children: [
+        {
+          id: personId * 10 + 11,
+          name: `${person.name}的子女11`,
+          title: "长子",
+          generation: person.generation + 2,
+          type: "child",
+          position: { x: 0, y: 0 },
+          children: [
+            {
+              id: personId * 10 + 111,
+              name: `${person.name}的子女111`,
+              title: "长子",
+              generation: person.generation + 3,
+              type: "child",
+              position: { x: 0, y: 0 },
+              children: [
+                {
+                  id: personId * 10 + 1111,
+                  name: `${person.name}的子女1111`,
+                  title: "长子",
+                  generation: person.generation + 4,
+                  type: "child",
+                  position: { x: 0, y: 0 },
+                  children: [
+                    {
+                      id: personId * 10 + 11111,
+                      name: `${person.name}的子女11111`,
+                      title: "长子",
+                      generation: person.generation + 5,
+                      type: "child",
+                      position: { x: 0, y: 0 },
+                      children: [],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: personId * 10 + 2,
+      name: `${person.name}的子女2`,
+      title: "次子",
+      generation: person.generation + 1,
+      type: "child",
+      position: { x: 0, y: 0 },
+      children: [],
+      // hasChildrenToLoad: true,
+      // collapsed: true // Explicitly initialize collapsed state for children with hasChildrenToLoad
+    },
+    {
+      id: personId * 10 + 3,
+      name: `${person.name}的子女3`,
+      title: "三子",
+      generation: person.generation + 1,
+      type: "child",
+      position: { x: 0, y: 0 },
+      children: [],
+    },
+  ];
+};

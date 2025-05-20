@@ -98,6 +98,9 @@ import {
   findPersonById,
 } from "../services/FamilyData";
 import { wait } from "../utils/domUtils";
+import { fetchMockChildrenData } from "../services/FamilyData";
+
+
 
 // 将导入的数据转换为响应式数据
 const familyData = reactive(processPersonData(rawFamilyData));
@@ -817,40 +820,7 @@ const loadChildrenData = async (personId) => {
     console.log(`[loadChildrenData] Waiting for API response...`);
     await wait(1000);
 
-    // Mock data for demonstration - in a real app, this would come from an API
-    const mockChildrenData = [
-      {
-        id: `${personId * 10 + 1}`,
-        name: `${person.name}的子女1`,
-        title: "长子",
-        generation: person.generation + 1,
-        type: "child",
-        position: { x: 0, y: 0 },
-        children: [],
-        hasChildrenToLoad: true,
-      },
-      {
-        id: `${personId * 10 + 2}`,
-        name: `${person.name}的子女2`,
-        title: "次子",
-        generation: person.generation + 1,
-        type: "child",
-        position: { x: 0, y: 0 },
-        children: [],
-        // hasChildrenToLoad: true,
-        // collapsed: true // Explicitly initialize collapsed state for children with hasChildrenToLoad
-      },
-      {
-        id: `${personId * 10 + 3}`,
-        name: `${person.name}的子女3`,
-        title: "三子",
-        generation: person.generation + 1,
-        type: "child",
-        position: { x: 0, y: 0 },
-        children: [],
-      },
-    ];
-
+    const mockChildrenData = fetchMockChildrenData(person)
     // Process the mock children data to ensure proper initialization of all properties
     const processedChildrenData = mockChildrenData.map((child) => ({
       ...child,
