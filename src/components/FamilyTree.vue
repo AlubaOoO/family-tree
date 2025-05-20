@@ -485,8 +485,11 @@ const zoomAtMouse = (event, newZoom) => {
 };
 
 const resetZoom = () => {
-  const treeCanvasElement = treeCanvas.value;
-  if (treeCanvasElement) {
+  if (layoutEngine && treeCanvas.value) { // Check if layoutEngine is initialized
+    const dimensions = layoutEngine.calculatePositions(); // Get dimensions from layoutEngine
+    autoFitContent(dimensions);
+  } else if (treeCanvas.value) { // Fallback if layoutEngine is not available
+    const treeCanvasElement = treeCanvas.value;
     const dimensions = {
       maxX: parseFloat(treeCanvasElement.style.width),
       maxY: parseFloat(treeCanvasElement.style.height),
