@@ -27,8 +27,18 @@ class ConnectionManager {
   initialize() {
     // 如果已经初始化，则先重置
     if (this.jsPlumbInstance) {
+      this.jsPlumbInstance.deleteEveryEndpoint();
+      this.jsPlumbInstance.deleteEveryConnection();
       this.jsPlumbInstance.reset();
       this.cleanupTemporaryElements();
+      
+      // 移除所有jsPlumb相关的DOM元素
+      const jsPlumbElements = this.treeCanvas.querySelectorAll('.jtk-endpoint, .jtk-connector, .jtk-overlay');
+      jsPlumbElements.forEach(element => {
+        if (element && element.parentNode) {
+          element.parentNode.removeChild(element);
+        }
+      });
     }
     
     // 创建新的JSPlumb实例
@@ -43,6 +53,7 @@ class ConnectionManager {
 
   // 清除临时创建的连接点元素
   cleanupTemporaryElements() {
+    // 清除之前创建的临时元素
     this.temporaryElements.forEach(elementId => {
       const element = document.getElementById(elementId);
       if (element && element.parentNode) {
@@ -50,6 +61,29 @@ class ConnectionManager {
       }
     });
     this.temporaryElements = [];
+
+    // 清除可能遗留的连接线元素（以特定前缀开头的元素）
+    const prefixes = ['horiz-line-', 'parent-vert-', 'child-vert-'];
+    prefixes.forEach(prefix => {
+      const elements = document.querySelectorAll(`[id^="${prefix}"]`);
+      elements.forEach(element => {
+        if (element && element.parentNode) {
+          element.parentNode.removeChild(element);
+        }
+      });
+    });
+    
+    // 额外检查并清除画布中所有直线元素
+    if (this.treeCanvas) {
+      // 清理具有背景色的div（可能是水平连接线）
+      const horizontalLines = this.treeCanvas.querySelectorAll('div[style*="background-color"]');
+      horizontalLines.forEach(element => {
+        // 只移除那些看起来像是连接线的元素（高度为2px的元素）
+        if (element.style.height === '2px' && element.parentNode) {
+          element.parentNode.removeChild(element);
+        }
+      });
+    }
   }
 
   // Refresh all connections
@@ -65,8 +99,28 @@ class ConnectionManager {
     this.initAttempts = 0;
     
     if (this.jsPlumbInstance) {
+      // 彻底清理：销毁旧实例并重新创建
+      this.jsPlumbInstance.deleteEveryEndpoint();
+      this.jsPlumbInstance.deleteEveryConnection();
       this.jsPlumbInstance.reset();
+      this.jsPlumbInstance = null; // 确保完全释放
+      
+      // 清理DOM元素
       this.cleanupTemporaryElements();
+      
+      // 清理所有jsPlumb相关的DOM元素
+      const jsPlumbElements = document.querySelectorAll('.jtk-endpoint, .jtk-connector, .jtk-overlay, .jtk-bezier');
+      jsPlumbElements.forEach(element => {
+        if (element && element.parentNode) {
+          element.parentNode.removeChild(element);
+        }
+      });
+      
+      // 刷新扁平化的家族数据
+      this.familyData = this.flattenFamilyTree(this.layoutEngine.familyData);
+      
+      // 重新初始化
+      this.initialize();
       this.initializeConnections();
     }
   }
@@ -89,11 +143,16 @@ class ConnectionManager {
   initializeConnections() {
     // 清理现有连接和临时元素
     if (this.jsPlumbInstance) {
+      // 确保删除所有现有连接
+      this.jsPlumbInstance.deleteEveryEndpoint();
       this.jsPlumbInstance.deleteEveryConnection();
       this.cleanupTemporaryElements();
     } else {
       this.initialize();
     }
+
+    // 确保家族数据是最新的扁平化结果
+    this.familyData = this.flattenFamilyTree(this.layoutEngine.familyData);
 
     // 确保所有节点元素都存在
     const visiblePersons = this.familyData.filter(person => !person._hidden);
@@ -127,7 +186,7 @@ class ConnectionManager {
     // 按父亲ID分组子女
     const childrenByParent = {};
     
-    // 收集所有可见的父子关系
+    // 遍历所有家族成员（包括深层次的成员），收集所有可见的父子关系
     this.familyData.forEach(person => {
       if (!person._hidden) {
         const children = getChildren(person);

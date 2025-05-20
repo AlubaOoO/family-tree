@@ -225,6 +225,8 @@ const toggleCollapse = (person) => {
 
     // 使用 nextTick 确保 DOM 更新后再更新连接
     nextTick(() => {
+      // 在更新连接前彻底清理
+      cleanupJsPlumbElements();
       updateConnections();
 
       // 如果之前有选中的人物且不是当前操作的人物，恢复选中状态
@@ -355,6 +357,16 @@ const recalculateLayout = (preserveView = false) => {
     updateCanvasDimensions(dimensions);
 
     console.log("[recalculateLayout] Updating connections");
+    // 彻底清理旧的连接线和相关元素
+    if (connectionManager) {
+      // 清除jsPlumb相关的DOM元素
+      const jsPlumbElements = document.querySelectorAll('.jtk-endpoint, .jtk-connector, .jtk-overlay, .jtk-bezier');
+      jsPlumbElements.forEach(element => {
+        if (element && element.parentNode) {
+          element.parentNode.removeChild(element);
+        }
+      });
+    }
     updateConnections();
 
     // 如果需要保留视图位置
@@ -403,7 +415,12 @@ const updateCanvasDimensions = (dimensions) => {
 // Update connections after changes
 const updateConnections = () => {
   if (connectionManager) {
-    connectionManager.updateConnections();
+    // 先全局清理所有残留的连接线
+    cleanupJsPlumbElements();
+    
+    // 直接使用现有的连接管理器重置和更新连接
+    // 而不是每次都创建新的连接管理器实例
+    connectionManager.reset();
   }
 };
 
@@ -874,6 +891,35 @@ const loadChildrenData = async (personId) => {
       `[loadChildrenData] Reinitializing LayoutEngine to update internal data`
     );
     layoutEngine = new LayoutEngine(familyData);
+    
+    // 同时重新初始化ConnectionManager以处理新的层级连接
+    if (connectionManager) {
+      console.log(
+        `[loadChildrenData] Reinitializing ConnectionManager to handle new connections`
+      );
+      
+      // 完全清除旧的连接管理器
+      connectionManager.jsPlumbInstance.deleteEveryEndpoint();
+      connectionManager.jsPlumbInstance.deleteEveryConnection();
+      connectionManager.jsPlumbInstance.reset();
+      connectionManager.cleanupTemporaryElements();
+      
+      // 清理所有jsPlumb相关的DOM元素
+      const jsPlumbElements = document.querySelectorAll('.jtk-endpoint, .jtk-connector, .jtk-overlay, .jtk-bezier');
+      jsPlumbElements.forEach(element => {
+        if (element && element.parentNode) {
+          element.parentNode.removeChild(element);
+        }
+      });
+      
+      // 创建全新的连接管理器
+      connectionManager = new ConnectionManager(
+        treeCanvas.value,
+        familyData,
+        layoutEngine
+      );
+      connectionManager.initialize();
+    }
 
     // 临时选中这个人，以便在重新计算布局时保持视图位置
     const previousSelectedPerson = selectedPerson.value;
@@ -952,6 +998,37 @@ onUnmounted(() => {
   window.removeEventListener("mouseup", endCanvasDrag);
   window.removeEventListener("resize", handleResize);
 });
+
+// 全局清理函数，用于清除所有jsPlumb相关的DOM元素
+const cleanupJsPlumbElements = () => {
+  // 清除所有jsPlumb相关的DOM元素
+  const jsPlumbElements = document.querySelectorAll('.jtk-endpoint, .jtk-connector, .jtk-overlay, .jtk-bezier');
+  jsPlumbElements.forEach(element => {
+    if (element && element.parentNode) {
+      element.parentNode.removeChild(element);
+    }
+  });
+
+  // 清除可能遗留的连接线元素（以特定前缀开头的元素）
+  const prefixes = ['horiz-line-', 'parent-vert-', 'child-vert-'];
+  prefixes.forEach(prefix => {
+    const elements = document.querySelectorAll(`[id^="${prefix}"]`);
+    elements.forEach(element => {
+      if (element && element.parentNode) {
+        element.parentNode.removeChild(element);
+      }
+    });
+  });
+  
+  // 清理具有背景色的div（可能是水平连接线）
+  const horizontalLines = document.querySelectorAll('div[style*="background-color"]');
+  horizontalLines.forEach(element => {
+    // 只移除那些看起来像是连接线的元素（高度为2px的元素）
+    if (element.style.height === '2px' && element.parentNode) {
+      element.parentNode.removeChild(element);
+    }
+  });
+};
 </script>
 
 <style scoped>
