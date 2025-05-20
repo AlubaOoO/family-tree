@@ -24,6 +24,7 @@ class LayoutEngine {
   
   // 扁平化家族树的辅助方法
   flattenFamilyTree(data) {
+    console.log('[LayoutEngine] Flattening family tree');
     const flattened = [];
     
     const flatten = (people) => {
@@ -33,17 +34,24 @@ class LayoutEngine {
         flattened.push(person);
         
         if (person.children && person.children.length > 0) {
+          console.log(`[LayoutEngine] Flattening ${person.children.length} children of person ${person.id} (${person.name})`);
           flatten(person.children);
         }
       }
     };
     
     flatten(data);
+    console.log(`[LayoutEngine] Flattened tree contains ${flattened.length} people`);
     return flattened;
   }
   
   // Calculate positions for all family members
   calculatePositions() {
+    console.log('[LayoutEngine] Starting calculatePositions');
+    
+    // 检查数据更新情况
+    console.log('[LayoutEngine] Family data count:', this.familyData.length);
+    
     // 重置所有位置为初始值，确保重新计算是从干净的状态开始
     this.familyData.forEach(person => {
       person.position.x = 0;
@@ -53,6 +61,7 @@ class LayoutEngine {
     // Get minimum generation to start from
     const minGen = Math.min(...this.familyData.map(p => p.generation));
     const maxGen = this.getMaxGeneration();
+    console.log(`[LayoutEngine] Generation range: ${minGen} to ${maxGen}`);
     
     // First, calculate the space needed for each person based on their descendants
     const spaceNeeded = {};
@@ -60,6 +69,7 @@ class LayoutEngine {
     // Process from bottom up (from youngest generation to oldest)
     for (let gen = maxGen; gen >= minGen; gen--) {
       const genPeople = this.getPeopleByGeneration(gen).filter(p => this.isMainPerson(p));
+      console.log(`[LayoutEngine] Processing generation ${gen}, found ${genPeople.length} main people`);
       
       genPeople.forEach(person => {
         // Start with space for this person and their spouses
@@ -69,6 +79,8 @@ class LayoutEngine {
         // If this person has children, add up their space
         const children = this.getChildren(person.id);
         if (children.length > 0) {
+          console.log(`[LayoutEngine] Person ${person.id} (${person.name}) has ${children.length} children`);
+          
           const childrenSpace = children.reduce((sum, child) => {
             return sum + (spaceNeeded[child.id] || CARD_WIDTH);
           }, 0);
@@ -82,6 +94,7 @@ class LayoutEngine {
         
         // Store the space needed for this person
         spaceNeeded[person.id] = width;
+        console.log(`[LayoutEngine] Space needed for person ${person.id} (${person.name}): ${width}px`);
       });
     }
     
@@ -95,6 +108,8 @@ class LayoutEngine {
       // Skip if no main people in this generation
       if (genPeople.length === 0) continue;
       
+      console.log(`[LayoutEngine] Positioning generation ${gen}, ${genPeople.length} main people`);
+      
       // Start X position for this generation (add space for generation label)
       let currentX = GENERATION_LABEL_WIDTH + 40;
       
@@ -105,6 +120,8 @@ class LayoutEngine {
         
         // Set X position left-aligned
         person.position.x = currentX;
+        
+        console.log(`[LayoutEngine] Positioned person ${person.id} (${person.name}) at (${person.position.x}, ${person.position.y})`);
         
         // Position spouse(s) to the right of the person
         const spouseIds = this.getSpouseIds(person.id);
@@ -117,6 +134,8 @@ class LayoutEngine {
             spouse.position.y = person.position.y; // Same Y level
             spouse.position.x = lastSpousePosition + SPOUSE_SPACING; // To the right
             lastSpousePosition = spouse.position.x;
+            
+            console.log(`[LayoutEngine] Positioned spouse ${spouse.id} (${spouse.name}) at (${spouse.position.x}, ${spouse.position.y})`);
           }
         });
         
@@ -130,6 +149,8 @@ class LayoutEngine {
       genPeople.forEach(person => {
         const children = this.getChildren(person.id);
         if (children.length > 0) {
+          console.log(`[LayoutEngine] Centering ${children.length} children under person ${person.id} (${person.name})`);
+          
           // Find rightmost position of parent (including spouses)
           const spouseIds = this.getSpouseIds(person.id);
           let parentRightX = person.position.x + CARD_WIDTH;
@@ -178,16 +199,31 @@ class LayoutEngine {
           // Calculate offset to center children under parent
           const offset = parentCenter - childrenCenter;
           
+          console.log(`[LayoutEngine] Centering calculation:`, {
+            parentLeftX: person.position.x,
+            parentRightX: parentRightX,
+            parentCenter: parentCenter,
+            leftmostChildX: leftmostChild.position.x,
+            rightEdge: rightEdge,
+            childrenCenter: childrenCenter,
+            offset: offset
+          });
+          
           // Apply offset to all children and their spouses
           children.forEach(child => {
+            const oldX = child.position.x;
             child.position.x += offset;
+            
+            console.log(`[LayoutEngine] Moved child ${child.id} (${child.name}) from X=${oldX} to X=${child.position.x}`);
             
             // Move child's spouses as well
             const childSpouseIds = this.getSpouseIds(child.id);
             childSpouseIds.forEach(spouseId => {
               const spouse = this.familyData.find(p => p.id === spouseId);
               if (spouse) {
+                const oldSpouseX = spouse.position.x;
                 spouse.position.x += offset;
+                console.log(`[LayoutEngine] Moved spouse ${spouse.id} (${spouse.name}) from X=${oldSpouseX} to X=${spouse.position.x}`);
               }
             });
           });
@@ -205,9 +241,14 @@ class LayoutEngine {
     });
     
     // 返回布局尺寸
+    const maxX = Math.max(...this.familyData.map(p => p.position.x)) + CARD_WIDTH + 100;
+    const maxY = Math.max(...this.familyData.map(p => p.position.y)) + CARD_HEIGHT + 100;
+    
+    console.log(`[LayoutEngine] Layout dimensions: ${maxX}x${maxY}`);
+    
     return {
-      maxX: Math.max(...this.familyData.map(p => p.position.x)) + CARD_WIDTH + 100,
-      maxY: Math.max(...this.familyData.map(p => p.position.y)) + CARD_HEIGHT + 100
+      maxX: maxX,
+      maxY: maxY
     };
   }
   

@@ -4,15 +4,17 @@
     <p>{{ person.title }}</p>
     <p>{{ person.relation }}</p>
     <div v-if="hasChildren" class="detail-actions">
-      <button @click="$emit('toggle-collapse')">
-        {{ person.collapsed ? '展开' : '折叠' }}子树
+      <button @click="handleButtonClick">
+        {{ getButtonText }}
       </button>
     </div>
   </div>
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue';
+
+const props = defineProps({
   person: {
     type: Object,
     required: true
@@ -23,7 +25,34 @@ defineProps({
   }
 });
 
-defineEmits(['toggle-collapse']);
+const emit = defineEmits(['toggle-collapse', 'load-children']);
+
+// Check if person has actual children data
+const hasChildrenData = computed(() => {
+  return props.person.children && 
+         props.person.children.some(child => child.type === 'child');
+});
+
+// Get appropriate button text
+const getButtonText = computed(() => {
+  if (hasChildrenData.value) {
+    return props.person.collapsed ? '展开子树' : '折叠子树';
+  } else if (props.hasChildren) {
+    return '加载子树数据';
+  }
+  return '';
+});
+
+// Handle button click
+const handleButtonClick = () => {
+  if (hasChildrenData.value) {
+    // If we have children data, just toggle collapse state
+    emit('toggle-collapse');
+  } else if (props.hasChildren) {
+    // If hasChildren is true but no children data, emit load event
+    emit('load-children', props.person.id);
+  }
+};
 </script>
 
 <style scoped>

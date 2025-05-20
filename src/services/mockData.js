@@ -79,7 +79,8 @@ export const mockData = [
                     relation: '',
                     generation: 17,
                     type: 'child',
-                    children: []
+                    children: [],
+                    hasChildrenToLoad: true,
                   }
                 ]
               }
@@ -154,7 +155,8 @@ export const mockData = [
                     relation: '',
                     generation: 17,
                     type: 'child',
-                    children: []
+                    children: [],
+                    hasChildrenToLoad: true,
                   }
                 ]
               }

@@ -26,6 +26,10 @@
         <div class="loading-message">建立家族连接...</div>
       </div>
       
+      <div v-if="isLoadingChildren" class="connecting-overlay">
+        <div class="loading-message">加载子树数据...</div>
+      </div>
+      
       <GenerationLabel 
         v-for="label in generationLabels" 
         :key="'gen-' + label.generation"
@@ -56,9 +60,8 @@
           :person="person"
           :has-children="hasChildren(person.id)"
           :is-collapsed="person.collapsed"
-          @drag-start="startDrag" 
-          @drag-end="endDrag"
           @toggle-collapse="toggleCollapse(person)"
+          @load-children="loadChildrenData"
         />
       </div>
     </div>
@@ -68,6 +71,7 @@
       :person="selectedPerson"
       :has-children="hasChildren(selectedPerson.id)"
       @toggle-collapse="toggleCollapse(selectedPerson)"
+      @load-children="loadChildrenData"
     />
   </div>
 </template>
@@ -84,27 +88,34 @@ import { familyData as rawFamilyData, getChildren, findPersonById } from '../ser
 import { wait } from '../utils/domUtils';
 
 // 将导入的数据转换为响应式数据
-const familyData = reactive(rawFamilyData.map(person => ({
-  ...person,
-  position: { ...person.position },
-  _hidden: false,
-  children: person.children ? person.children.map(child => ({
-    ...child,
-    position: { ...child.position },
-    _hidden: false,
-    children: child.children ? child.children.map(grandchild => ({
-      ...grandchild,
-      position: { ...grandchild.position },
+const familyData = reactive(processPersonData(rawFamilyData));
+
+// 递归处理人物数据，添加位置和状态属性
+function processPersonData(peopleArray) {
+  if (!peopleArray || !Array.isArray(peopleArray)) return [];
+  
+  return peopleArray.map(person => {
+    // 处理当前人物
+    const processedPerson = {
+      ...person,
+      position: { ...(person.position || { x: 0, y: 0 }) },
       _hidden: false,
-      children: grandchild.children ? grandchild.children.map(ggchild => ({
-        ...ggchild,
-        position: { ...ggchild.position },
-        _hidden: false,
-        children: ggchild.children ? [...ggchild.children] : []
-      })) : []
-    })) : []
-  })) : []
-})));
+      // 使用mockData中的hasChildrenToLoad或默认为false
+      hasChildrenToLoad: person.hasChildrenToLoad || false,
+      // 如果没有子女数据或者hasChildrenToLoad为true，则默认折叠
+      collapsed: !person.children || person.children.length === 0 || person.hasChildrenToLoad === true
+    };
+    
+    // 递归处理子女
+    if (processedPerson.children && processedPerson.children.length > 0) {
+      processedPerson.children = processPersonData(processedPerson.children);
+    } else {
+      processedPerson.children = [];
+    }
+    
+    return processedPerson;
+  });
+}
 
 // Reference to the canvas
 const treeCanvas = ref(null);
@@ -129,6 +140,9 @@ const isConnectingNodes = ref(false);
 
 // 世代标记数据
 const generationLabels = ref([]);
+
+// Loading state for children data
+const isLoadingChildren = ref(false);
 
 // Services
 let layoutEngine = null;
@@ -158,21 +172,36 @@ const toggleFullScreen = () => {
   });
 };
 
-// Check if a person has children
+// Check if a person has children or has children to load
 const hasChildren = (personId) => {
   const person = findPersonById(personId, familyData);
-  return person && getChildren(person).length > 0;
+  if (!person) return false;
+  
+  // Check if person has actual children data
+  const hasActualChildren = person.children && 
+                           person.children.some(child => child.type === 'child');
+  
+  // Check if person is marked as having children to load
+  const hasChildrenMarkedToLoad = person.hasChildrenToLoad === true;
+  
+  return hasActualChildren || hasChildrenMarkedToLoad;
 };
 
 // Function to toggle collapse state of a subtree
 const toggleCollapse = (person) => {
   if (!hasChildren(person.id)) return;
   
-  person.collapsed = !person.collapsed;
-  updateVisibility();
-  nextTick(() => {
-    updateConnections();
-  });
+  // If person has children data, toggle collapse state
+  if (person.children && person.children.some(child => child.type === 'child')) {
+    person.collapsed = !person.collapsed;
+    updateVisibility();
+    nextTick(() => {
+      updateConnections();
+    });
+  } else if (person.hasChildrenToLoad) {
+    // If person has children to load but not loaded yet, load them
+    loadChildrenData(person.id);
+  }
 };
 
 // Update visibility based on collapse state
@@ -189,16 +218,71 @@ const updateVisibility = () => {
 
 // Public method to recalculate layout
 const recalculateLayout = () => {
-  if (!layoutEngine) return;
+  if (!layoutEngine) {
+    console.warn('[recalculateLayout] Layout engine not initialized');
+    return;
+  }
   
+  console.log('[recalculateLayout] Starting layout recalculation');
+  
+  // 记录重新计算前的一些关键节点位置
+  if (selectedPerson.value) {
+    console.log('[recalculateLayout] Selected person position before recalculation:', {
+      id: selectedPerson.value.id,
+      name: selectedPerson.value.name,
+      position: { ...selectedPerson.value.position }
+    });
+    
+    // 如果选中的人有子女，也记录它们的位置
+    if (selectedPerson.value.children && selectedPerson.value.children.length > 0) {
+      console.log('[recalculateLayout] Selected person\'s children before recalculation:', 
+        selectedPerson.value.children.map(child => ({
+          id: child.id,
+          name: child.name,
+          position: { ...child.position }
+        }))
+      );
+    }
+  }
+  
+  console.log('[recalculateLayout] Calling layoutEngine.calculatePositions()');
   const dimensions = layoutEngine.calculatePositions();
+  
+  // 记录重新计算后的一些关键节点位置
+  if (selectedPerson.value) {
+    console.log('[recalculateLayout] Selected person position after recalculation:', {
+      id: selectedPerson.value.id,
+      name: selectedPerson.value.name,
+      position: { ...selectedPerson.value.position }
+    });
+    
+    // 如果选中的人有子女，也记录它们的位置
+    if (selectedPerson.value.children && selectedPerson.value.children.length > 0) {
+      console.log('[recalculateLayout] Selected person\'s children after recalculation:', 
+        selectedPerson.value.children.map(child => ({
+          id: child.id,
+          name: child.name,
+          position: { ...child.position }
+        }))
+      );
+    }
+  }
+  
+  console.log('[recalculateLayout] Updating visibility');
   updateVisibility();
+  
+  console.log('[recalculateLayout] Updating generation labels');
   updateGenerationLabels();
+  
   nextTick(() => {
+    console.log('[recalculateLayout] Updating canvas dimensions:', dimensions);
     updateCanvasDimensions(dimensions);
+    
+    console.log('[recalculateLayout] Updating connections');
     updateConnections();
     
     // Auto-fit content after recalculating layout
+    console.log('[recalculateLayout] Auto-fitting content');
     autoFitContent(dimensions);
   });
 };
@@ -263,16 +347,6 @@ const selectPerson = (person) => {
 // Double click to toggle collapse
 const handleDoubleClick = (person) => {
   toggleCollapse(person);
-};
-
-// Drag handlers
-const startDrag = (personId, event) => {
-  // Implemented in PersonCard component
-};
-
-const endDrag = (personId, event) => {
-  // Update connections after dragging
-  updateConnections();
 };
 
 // Collapse all subtrees
@@ -454,6 +528,130 @@ const handleResize = () => {
       maxY: parseFloat(treeCanvas.value.style.height)
     };
     autoFitContent(dimensions);
+  }
+};
+
+// Function to load children data for a person
+const loadChildrenData = async (personId) => {
+  const person = findPersonById(personId, familyData);
+  if (!person) {
+    console.error(`[loadChildrenData] Person with ID ${personId} not found`);
+    return;
+  }
+  
+  console.log(`[loadChildrenData] Loading children for person:`, {
+    id: person.id,
+    name: person.name,
+    position: { ...person.position },
+    currentChildrenCount: person.children ? person.children.length : 0,
+    hasChildrenToLoad: person.hasChildrenToLoad
+  });
+  
+  // Set loading state
+  isLoadingChildren.value = true;
+  
+  try {
+    // Simulate API call to fetch children data
+    console.log(`[loadChildrenData] Waiting for API response...`);
+    await wait(1000);
+    
+    // Mock data for demonstration - in a real app, this would come from an API
+    const mockChildrenData = [
+      {
+        id: `${personId}-child-1`,
+        name: `${person.name}的子女1`,
+        title: '长子',
+        generation: person.generation + 1,
+        type: 'child',
+        position: { x: 0, y: 0 },
+        children: []
+      },
+      {
+        id: `${personId}-child-2`,
+        name: `${person.name}的子女2`,
+        title: '次子',
+        generation: person.generation + 1,
+        type: 'child',
+        position: { x: 0, y: 0 },
+        children: []
+      }
+    ];
+    
+    console.log(`[loadChildrenData] Mock children data created:`, mockChildrenData);
+    
+    // Initialize children array if it doesn't exist
+    if (!person.children) {
+      person.children = [];
+      console.log(`[loadChildrenData] Initialized empty children array for person ${person.id}`);
+    }
+    
+    // Log the parent's position before adding children
+    console.log(`[loadChildrenData] Parent position before adding children:`, { 
+      x: person.position.x, 
+      y: person.position.y 
+    });
+    
+    // Add the new children to the person's children array
+    person.children.push(...mockChildrenData);
+    console.log(`[loadChildrenData] Added ${mockChildrenData.length} children to person ${person.id}`);
+    console.log(`[loadChildrenData] New children array:`, person.children);
+    
+    // Mark as expanded
+    person.collapsed = false;
+    console.log(`[loadChildrenData] Set collapsed to false for person ${person.id}`);
+    
+    // Remove the hasChildrenToLoad flag since we've loaded the children
+    person.hasChildrenToLoad = false;
+    console.log(`[loadChildrenData] Set hasChildrenToLoad to false for person ${person.id}`);
+    
+    // 关键修复：重新初始化LayoutEngine以更新内部数据
+    console.log(`[loadChildrenData] Reinitializing LayoutEngine to update internal data`);
+    layoutEngine = new LayoutEngine(familyData);
+    
+    // Log before recalculating layout
+    console.log(`[loadChildrenData] Before recalculating layout - parent and children:`, {
+      parent: {
+        id: person.id,
+        position: { ...person.position }
+      },
+      children: person.children.map(child => ({
+        id: child.id,
+        position: { ...child.position }
+      }))
+    });
+    
+    // Recalculate layout to position new nodes
+    console.log(`[loadChildrenData] Calling recalculateLayout()`);
+    recalculateLayout();
+    
+    // Log after recalculating layout (will execute before the actual recalculation due to async nature)
+    setTimeout(() => {
+      console.log(`[loadChildrenData] After recalculateLayout - parent and children positions:`, {
+        parent: {
+          id: person.id,
+          position: { ...person.position }
+        },
+        children: person.children.map(child => ({
+          id: child.id,
+          position: { ...child.position }
+        }))
+      });
+      
+      // Check if layout engine positioned the children
+      if (layoutEngine) {
+        console.log(`[loadChildrenData] LayoutEngine state:`, {
+          initialized: !!layoutEngine,
+          familyDataCount: layoutEngine.familyData.length
+        });
+      }
+    }, 100);
+    
+  } catch (error) {
+    console.error('[loadChildrenData] Error loading children data:', error);
+  } finally {
+    // Clear loading state
+    isLoadingChildren.value = false;
+    console.log(`[loadChildrenData] Loading state cleared`);
   }
 };
 

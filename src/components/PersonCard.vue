@@ -7,8 +7,6 @@
       'has-children': hasChildren,
       'collapsed': isCollapsed
     }"
-    @mousedown="startDrag"
-    @mouseup="endDrag"
   >
     <div class="person-image">
       <div class="avatar">
@@ -21,10 +19,10 @@
     <div class="generation">第{{ toChineseNumber(person.generation) }}世</div>
     
     <button 
-      v-if="hasChildren" 
+      v-if="shouldShowToggleButton"
       class="toggle-btn"
-      @click.stop="$emit('toggle-collapse')"
-      :title="isCollapsed ? '展开子树' : '折叠子树'"
+      @click.stop="handleToggleClick"
+      :title="getToggleButtonTitle"
     >
       <span class="toggle-icon">{{ isCollapsed ? '+' : '−' }}</span>
     </button>
@@ -33,7 +31,6 @@
 
 <script setup>
 import { ref, computed } from 'vue';
-import { useDraggable } from '@vueuse/core';
 
 const props = defineProps({
   person: {
@@ -50,7 +47,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['drag-start', 'drag-end', 'toggle-collapse']);
+const emit = defineEmits(['toggle-collapse', 'load-children']);
 
 // Determine if the person is male or female
 const isMale = computed(() => {
@@ -58,6 +55,38 @@ const isMale = computed(() => {
          !props.person.title?.includes('室') && 
          !props.person.name?.includes('氏');
 });
+
+// Check if person has actual children data
+const hasChildrenData = computed(() => {
+  return props.person.children && 
+         props.person.children.some(child => child.type === 'child');
+});
+
+// Determine if we should show the toggle button
+const shouldShowToggleButton = computed(() => {
+  return hasChildrenData.value || props.hasChildren;
+});
+
+// Get appropriate title for the toggle button
+const getToggleButtonTitle = computed(() => {
+  if (hasChildrenData.value) {
+    return props.isCollapsed ? '展开子树' : '折叠子树';
+  } else if (props.hasChildren) {
+    return '加载子树数据';
+  }
+  return '';
+});
+
+// Handle toggle button click
+const handleToggleClick = () => {
+  if (hasChildrenData.value) {
+    // If we have children data, just toggle collapse state
+    emit('toggle-collapse');
+  } else if (props.hasChildren) {
+    // If hasChildren is true but no children data, emit load event
+    emit('load-children', props.person.id);
+  }
+};
 
 // Function to get avatar image based on gender
 const getAvatarImage = () => {
@@ -79,50 +108,6 @@ const toChineseNumber = (num) => {
     const tens = Math.floor(num / 10);
     const ones = num % 10;
     return chineseNumbers[tens] + '十' + (ones > 0 ? chineseNumbers[ones] : '');
-  }
-};
-
-// Drag functionality
-let isDragging = false;
-let startX = 0;
-let startY = 0;
-
-const startDrag = (event) => {
-  isDragging = true;
-  startX = event.clientX;
-  startY = event.clientY;
-  emit('drag-start', props.person.id, event);
-  
-  // Add event listeners to track dragging
-  document.addEventListener('mousemove', handleDrag);
-  document.addEventListener('mouseup', handleDragEnd);
-};
-
-const handleDrag = (event) => {
-  if (!isDragging) return;
-  
-  const dx = event.clientX - startX;
-  const dy = event.clientY - startY;
-  
-  // Update the person's position
-  props.person.position.x += dx;
-  props.person.position.y += dy;
-  
-  // Update start positions for next move
-  startX = event.clientX;
-  startY = event.clientY;
-};
-
-const handleDragEnd = (event) => {
-  isDragging = false;
-  document.removeEventListener('mousemove', handleDrag);
-  document.removeEventListener('mouseup', handleDragEnd);
-  emit('drag-end', props.person.id, event);
-};
-
-const endDrag = (event) => {
-  if (isDragging) {
-    handleDragEnd(event);
   }
 };
 </script>
